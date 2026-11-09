@@ -206,6 +206,12 @@ func getWithHeaders(t *testing.T, app *fiber.App, method, path string, headers m
 	return resp.StatusCode, data
 }
 
+func TestValidateRulesAcceptsStringExactMatcher(t *testing.T) {
+	if err := ValidateRules([]byte(`[{"query":{"mode":"preview"},"statusCode":200,"response":{"ok":true}}]`)); err != nil {
+		t.Fatalf("string exact matcher should be accepted: %v", err)
+	}
+}
+
 func TestValidateRulesRejectsMalformedRules(t *testing.T) {
 	if err := ValidateRules([]byte(`[{"query":{"x":{}},"statusCode":200,"response":{}}]`)); err == nil {
 		t.Fatal("expected matcher validation error")

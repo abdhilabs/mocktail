@@ -25,6 +25,24 @@ type ValueMatcher struct {
 	Present *bool   `json:"present,omitempty"`
 }
 
+// UnmarshalJSON accepts the documented matcher object and the concise legacy form
+// {"query":{"mode":"preview"}}, treating the latter as an exact match.
+func (m *ValueMatcher) UnmarshalJSON(data []byte) error {
+	var exact string
+	if err := json.Unmarshal(data, &exact); err == nil {
+		m.Exact = &exact
+		m.Present = nil
+		return nil
+	}
+	type matcher ValueMatcher
+	var parsed matcher
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	*m = ValueMatcher(parsed)
+	return nil
+}
+
 func ValidateRules(raw []byte) error {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil
