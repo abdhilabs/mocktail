@@ -4,6 +4,45 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 
+## Unreleased
+
+### Added
+
+- Added ordered request-aware response rules for each mock endpoint.
+- Rules can match exact query parameter values, exact header values, HTTP method, and path.
+- Rules can explicitly require a query parameter or header to be present or absent.
+- The first matching rule returns its configured status, response headers, and ordinary JSON response body; the existing static response remains the fallback.
+- Added a Rules editor tab with add, remove, reorder, and validation feedback.
+- Added backend and UI coverage for exact matches, presence/absence checks, ordering, fallback, malformed rules, and static-response regression behavior.
+
+### Configuration
+
+Rules are stored in the endpoint's `Rules` array. Example:
+
+```json
+[
+  {
+    "query": {"mode": {"exact": "preview"}},
+    "statusCode": 200,
+    "responseHeaders": {"X-Mock-Case": "preview"},
+    "response": {"mode": "preview"}
+  },
+  {
+    "headers": {"X-Client": {"present": false}},
+    "statusCode": 404,
+    "response": {"error": "missing client header"}
+  }
+]
+```
+
+Rules are evaluated from first to last. `exact` compares the incoming string value. `present: true` and `present: false` check existence. `response` is user-provided JSON and is not interpreted by Mocktail.
+
+### Limitations
+
+- Response bodies must be valid JSON; arbitrary text bodies are not yet supported by the current endpoint model.
+- Matching is exact; there are no regular expressions, ranges, wildcards, or body matchers.
+- Rules do not generate domain data, track state/history, verify signatures, or implement application-specific behavior.
+
 ## [4.1.0] - 2026-10-24
 
 See what your client sent, a Live view that holds up under heavy traffic, and security fixes.

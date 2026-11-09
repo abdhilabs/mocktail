@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"mocktail-api/database"
+	"mocktail-api/mocktail"
 	"mocktail-api/randomize"
 	"strings"
 
@@ -12,15 +13,16 @@ import (
 )
 
 type Api struct {
-	ID         uint            `gorm:"primary_key;auto_increment;not_null"`
-	Endpoint   string          `validate:"required"`
-	Method     string          `validate:"is-method-allowed"`
-	Key        string          `gorm:"unique;not null"`
-	StatusCode int             `gorm:"default:200" json:"StatusCode"`
-	Delay      int             `gorm:"default:0" json:"Delay"`
-	Response   datatypes.JSON  `validate:"required"`
-	Randomize  datatypes.JSON  `json:"Randomize"` // optional per-field faker config; nil = serve Response as-is
-	Headers    datatypes.JSON  `json:"Headers"`   // optional response headers {"Header-Name":"value"}; nil = none
+	ID         uint           `gorm:"primary_key;auto_increment;not_null"`
+	Endpoint   string         `validate:"required"`
+	Method     string         `validate:"is-method-allowed"`
+	Key        string         `gorm:"unique;not null"`
+	StatusCode int            `gorm:"default:200" json:"StatusCode"`
+	Delay      int            `gorm:"default:0" json:"Delay"`
+	Response   datatypes.JSON `validate:"required"`
+	Randomize  datatypes.JSON `json:"Randomize"` // optional per-field faker config; nil = serve Response as-is
+	Headers    datatypes.JSON `json:"Headers"`   // optional response headers {"Header-Name":"value"}; nil = none
+	Rules      datatypes.JSON `json:"Rules"`     // optional ordered request-aware response rules
 }
 
 type Apis struct {
@@ -85,6 +87,9 @@ func InsertApi(api *Api) error {
 	if err := validate.Struct(api); err != nil {
 		return err
 	}
+	if err := mocktail.ValidateRules(api.Rules); err != nil {
+		return err
+	}
 	if err := db.Create(&api).Error; err != nil {
 		return err
 	}
@@ -114,6 +119,7 @@ func UpdateApi(c *fiber.Ctx) error {
 	existingApi.Response = updatedApi.Response
 	existingApi.Randomize = updatedApi.Randomize
 	existingApi.Headers = updatedApi.Headers
+	existingApi.Rules = updatedApi.Rules
 	existingApi.Key = updatedApi.Method + existingApi.Endpoint
 
 	// Set defaults if not provided
@@ -133,6 +139,9 @@ func UpdateApi(c *fiber.Ctx) error {
 	validate := validator.New()
 	validate.RegisterValidation("is-method-allowed", isApiHTTPMethodValid)
 	if err := validate.Struct(&existingApi); err != nil {
+		return c.Status(400).JSON(ErrorResponse{Message: err.Error()})
+	}
+	if err := mocktail.ValidateRules(existingApi.Rules); err != nil {
 		return c.Status(400).JSON(ErrorResponse{Message: err.Error()})
 	}
 
@@ -200,6 +209,7 @@ func ImportApis(c *fiber.Ctx) error {
 			Response:   importedApi.Response,
 			Randomize:  importedApi.Randomize,
 			Headers:    importedApi.Headers,
+			Rules:      importedApi.Rules,
 		}
 
 		// Try to insert
@@ -220,7 +230,6 @@ func ImportApis(c *fiber.Ctx) error {
 
 	return c.JSON(result)
 }
-
 
 // PreviewApi generates a sample of a response with the given randomize config
 // applied, without persisting anything — powers the editor's live preview.

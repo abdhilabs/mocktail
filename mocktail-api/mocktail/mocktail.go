@@ -21,6 +21,7 @@ type Api struct {
 	Response   datatypes.JSON `validate:"required"`
 	Randomize  datatypes.JSON `json:"Randomize"` // optional per-field faker config; nil = serve Response as-is
 	Headers    datatypes.JSON `json:"Headers"`   // optional response headers {"Header-Name":"value"}; nil = none
+	Rules      datatypes.JSON `json:"Rules"`     // optional ordered request-aware response rules
 }
 
 type ErrorResponse struct {
@@ -37,23 +38,45 @@ func MockApiHandler(c *fiber.Ctx) error {
 		return c.Status(404).JSON(ErrorResponse{Message: "Api not found..."})
 	}
 
+	// Select the first matching rule. With no rules or no match, the existing static response remains the default.
+	statusCode := api.StatusCode
+	responseBody := json.RawMessage(api.Response)
+	responseHeaders := api.Headers
+	if len(api.Rules) > 0 {
+		var rules []RequestRule
+		if err := json.Unmarshal(api.Rules, &rules); err != nil {
+			return c.Status(500).JSON(ErrorResponse{Message: "Invalid request rules"})
+		}
+		for _, rule := range rules {
+			if matchRule(c, rule, path) {
+				statusCode, responseBody, responseHeaders = rule.StatusCode, rule.Response, nil
+				if len(rule.HeadersOut) > 0 {
+					responseHeaders, _ = json.Marshal(rule.HeadersOut)
+				}
+				break
+			}
+		}
+	}
+
 	// Apply delay if set
 	if api.Delay > 0 {
 		time.Sleep(time.Duration(api.Delay) * time.Millisecond)
 	}
 
 	// Set default status code if not set
-	statusCode := api.StatusCode
 	if statusCode == 0 {
 		statusCode = 200
+	}
+	if len(responseBody) == 0 {
+		return c.Status(500).JSON(ErrorResponse{Message: "Invalid response data"})
 	}
 
 	// Apply custom response headers, if any. A user-supplied Content-Type must win over the
 	// default application/json, so remember it and bypass c.JSON() below (which would overwrite it).
 	customContentType := ""
-	if len(api.Headers) > 0 {
+	if len(responseHeaders) > 0 {
 		var headers map[string]string
-		if err := json.Unmarshal(api.Headers, &headers); err == nil {
+		if err := json.Unmarshal(responseHeaders, &headers); err == nil {
 			for k, v := range headers {
 				c.Set(k, v)
 				if strings.EqualFold(k, "Content-Type") {
@@ -70,7 +93,7 @@ func MockApiHandler(c *fiber.Ctx) error {
 
 	// Unmarshal the JSON response
 	var response interface{}
-	if err := json.Unmarshal(api.Response, &response); err != nil {
+	if err := json.Unmarshal(responseBody, &response); err != nil {
 		return c.Status(500).JSON(ErrorResponse{Message: "Invalid response data"})
 	}
 
