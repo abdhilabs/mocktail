@@ -110,11 +110,11 @@ func TestServeCustomHeaders(t *testing.T) {
 	setupDB(t)
 	app := testApp()
 	insert(t, &Api{
-		Endpoint:  "hdr",
-		Method:    "GET",
+		Endpoint:   "hdr",
+		Method:     "GET",
 		StatusCode: 200,
-		Response:  rawJSON(`{"ok":true}`),
-		Headers:   rawJSON(`{"X-Total-Count":"42","Cache-Control":"no-cache"}`),
+		Response:   rawJSON(`{"ok":true}`),
+		Headers:    rawJSON(`{"X-Total-Count":"42","Cache-Control":"no-cache"}`),
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/mocktail/hdr", nil), -1)
@@ -139,11 +139,11 @@ func TestServeContentTypeOverride(t *testing.T) {
 	setupDB(t)
 	app := testApp()
 	insert(t, &Api{
-		Endpoint:  "ct",
-		Method:    "GET",
+		Endpoint:   "ct",
+		Method:     "GET",
 		StatusCode: 200,
-		Response:  rawJSON(`{"error":"bad"}`),
-		Headers:   rawJSON(`{"Content-Type":"application/problem+json"}`),
+		Response:   rawJSON(`{"error":"bad"}`),
+		Headers:    rawJSON(`{"Content-Type":"application/problem+json"}`),
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/mocktail/ct", nil), -1)
@@ -165,15 +165,68 @@ func TestServeContentTypeOverride(t *testing.T) {
 	}
 }
 
+func TestServeRequestRulesExactAbsentPresentOrderingAndFallback(t *testing.T) {
+	setupDB(t)
+	app := testApp()
+	insert(t, &Api{Endpoint: "rules", Method: "GET", StatusCode: 200, Response: rawJSON(`{"case":"default"}`), Rules: rawJSON(`[
+		{"query":{"mode":{"exact":"fast"}},"statusCode":201,"response":{"case":"exact"}},
+		{"headers":{"X-Trace":{"present":false}},"statusCode":202,"response":{"case":"absent"}},
+		{"headers":{"X-Trace":{"present":true}},"statusCode":203,"response":{"case":"present"}}
+	]`)})
+	status, body := get(t, app, "GET", "/mocktail/rules?mode=fast")
+	if status != 201 || !strings.Contains(string(body), `"exact"`) {
+		t.Fatalf("exact rule: status=%d body=%s", status, body)
+	}
+	status, body = get(t, app, "GET", "/mocktail/rules?mode=slow")
+	if status != 202 || !strings.Contains(string(body), `"absent"`) {
+		t.Fatalf("absent rule: status=%d body=%s", status, body)
+	}
+	status, body = getWithHeaders(t, app, "GET", "/mocktail/rules?mode=slow", map[string]string{"X-Trace": "1"})
+	if status != 203 || !strings.Contains(string(body), `"present"`) {
+		t.Fatalf("present rule: status=%d body=%s", status, body)
+	}
+	status, body = get(t, app, "GET", "/mocktail/rules?mode=other")
+	if status != 202 {
+		t.Fatalf("fallback after matching absent rule: status=%d body=%s", status, body)
+	}
+}
+
+func getWithHeaders(t *testing.T, app *fiber.App, method, path string, headers map[string]string) (int, []byte) {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	resp, err := app.Test(req, -1)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, data
+}
+
+func TestValidateRulesRejectsMalformedRules(t *testing.T) {
+	if err := ValidateRules([]byte(`[{"query":{"x":{}},"statusCode":200,"response":{}}]`)); err == nil {
+		t.Fatal("expected matcher validation error")
+	}
+	if err := ValidateRules([]byte(`[{"statusCode":200,"response":null}]`)); err == nil {
+		t.Fatal("expected response validation error")
+	}
+	if err := ValidateRules([]byte(`[{"statusCode":99,"response":{}}]`)); err == nil {
+		t.Fatal("expected status validation error")
+	}
+}
+
 func TestServeRandomizeFixed(t *testing.T) {
 	setupDB(t)
 	app := testApp()
 	insert(t, &Api{
-		Endpoint:  "rnd",
-		Method:    "GET",
+		Endpoint:   "rnd",
+		Method:     "GET",
 		StatusCode: 200,
-		Response:  rawJSON(`{"name":"orig"}`),
-		Randomize: rawJSON(`{"name":{"type":"fixed","value":"Z"}}`),
+		Response:   rawJSON(`{"name":"orig"}`),
+		Randomize:  rawJSON(`{"name":{"type":"fixed","value":"Z"}}`),
 	})
 
 	status, body := get(t, app, "GET", "/mocktail/rnd")

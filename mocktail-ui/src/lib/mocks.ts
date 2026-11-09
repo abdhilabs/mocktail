@@ -57,6 +57,19 @@ export type RandomizeConfig = Record<string, FieldSpec>
 /** Custom response headers: header name → value. */
 export type HeadersConfig = Record<string, string>
 
+/** Ordered request-aware response rules. The first matching rule wins. */
+export interface RequestRule {
+  query?: Record<string, { exact?: string; present?: boolean }>
+  headers?: Record<string, { exact?: string; present?: boolean }>
+  method?: Method
+  path?: string
+  statusCode: number
+  response: unknown
+  responseHeaders?: HeadersConfig
+}
+
+export type RulesConfig = RequestRule[]
+
 /** Plain generator types the backend supports (special modes "fixed"/"ai" handled separately). */
 export const FAKER_TYPES = [
   'uuid', 'firstName', 'lastName', 'fullName', 'email', 'phone', 'username',
@@ -75,6 +88,7 @@ export interface Mock {
   body: string
   randomize: RandomizeConfig
   headers: HeadersConfig
+  rules: RulesConfig
 }
 
 /** Editable form state for the endpoint editor. `id === null` means a new mock. */
@@ -87,6 +101,7 @@ export interface Draft {
   body: string
   randomize: RandomizeConfig
   headers: HeadersConfig
+  rules: RulesConfig
 }
 
 export function newDraft(): Draft {
@@ -99,6 +114,7 @@ export function newDraft(): Draft {
     body: '{\n  \n}',
     randomize: {},
     headers: {},
+    rules: [],
   }
 }
 
@@ -112,6 +128,7 @@ export function mockToDraft(m: Mock): Draft {
     body: m.body,
     randomize: m.randomize,
     headers: m.headers,
+    rules: m.rules,
   }
 }
 

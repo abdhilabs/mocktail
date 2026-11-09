@@ -1,4 +1,4 @@
-import type { Draft, HeadersConfig, Method, Mock, RandomizeConfig } from './mocks'
+import type { Draft, HeadersConfig, Method, Mock, RandomizeConfig, RulesConfig } from './mocks'
 import { errMessage } from './http'
 import { apiFetch } from './auth'
 
@@ -13,6 +13,7 @@ interface ApiRecord {
   Response: unknown
   Randomize?: RandomizeConfig | null
   Headers?: HeadersConfig | null
+  Rules?: RulesConfig | null
 }
 
 const METHODS: Method[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -35,6 +36,7 @@ function toMock(a: ApiRecord): Mock {
     body: JSON.stringify(a.Response ?? {}, null, 2),
     randomize: a.Randomize ?? {},
     headers: a.Headers ?? {},
+    rules: a.Rules ?? [],
   }
 }
 
@@ -55,6 +57,7 @@ interface SavePayload {
   Response: unknown
   Randomize: RandomizeConfig | null
   Headers: HeadersConfig | null
+  Rules: RulesConfig | null
 }
 
 export async function deleteMock(id: number): Promise<void> {
@@ -214,6 +217,7 @@ export async function saveMock(d: Draft): Promise<Mock> {
     Response: response,
     Randomize: Object.keys(perRequest).length > 0 ? perRequest : null,
     Headers: Object.keys(headers).length > 0 ? headers : null,
+    Rules: d.rules.length > 0 ? d.rules : null,
   }
 
   const isNew = d.id === null

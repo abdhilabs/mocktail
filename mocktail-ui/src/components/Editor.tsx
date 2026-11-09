@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { METHODS, type Draft, type HeadersConfig, type Method, type RandomizeConfig } from '../lib/mocks'
+import { METHODS, type Draft, type HeadersConfig, type Method, type RandomizeConfig, type RulesConfig } from '../lib/mocks'
 import { saveMock, sendMock, type TestResult } from '../lib/api'
 import { METHOD_BADGE } from '../lib/methods'
 import { validateJson } from '../lib/json'
 import { CodeEditor } from './CodeEditor'
 import { DataTab } from './editor/DataTab'
 import { HeadersTab } from './editor/HeadersTab'
+import { RulesTab } from './editor/RulesTab'
 import { TestTab } from './editor/TestTab'
 import { StatusPicker } from './editor/StatusPicker'
 
-type Tab = 'data' | 'headers' | 'test'
-const TABS: Tab[] = ['data', 'headers', 'test']
+type Tab = 'data' | 'headers' | 'rules' | 'test'
+const TABS: Tab[] = ['data', 'headers', 'rules', 'test']
 
 
 export default function Editor({
@@ -29,6 +30,7 @@ export default function Editor({
   const [body, setBody] = useState(initial.body)
   const [randomize, setRandomize] = useState<RandomizeConfig>(initial.randomize)
   const [headers, setHeaders] = useState<HeadersConfig>(initial.headers)
+  const [rules, setRules] = useState<RulesConfig>(initial.rules ?? [])
   const [tab, setTab] = useState<Tab>('data')
   const [selectedField, setSelectedField] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -43,6 +45,7 @@ export default function Editor({
     body: initial.body,
     randomize: initial.randomize,
     headers: initial.headers,
+    rules: initial.rules ?? [],
   }))
 
   const jsonError = useMemo(() => validateJson(body), [body])
@@ -65,16 +68,27 @@ export default function Editor({
     delayMs !== baseline.delayMs ||
     body !== baseline.body ||
     JSON.stringify(randomize) !== JSON.stringify(baseline.randomize) ||
-    JSON.stringify(headers) !== JSON.stringify(baseline.headers)
+    JSON.stringify(headers) !== JSON.stringify(baseline.headers) ||
+    JSON.stringify(rules) !== JSON.stringify(baseline.rules)
   const canSave = !saving && !jsonError && path.trim().length > 1
 
   /** Save in place (POST if new, PUT if existing), refresh the catalog, keep the editor open. */
   async function persist(): Promise<boolean> {
     if (!canSave) return false
+    for (const [index, rule] of rules.entries()) {
+      if (!Number.isInteger(rule.statusCode) || rule.statusCode < 100 || rule.statusCode > 599) {
+        setSaveError(`Rule ${index + 1}: status must be between 100 and 599`)
+        return false
+      }
+      if (rule.response === undefined) {
+        setSaveError(`Rule ${index + 1}: response is required`)
+        return false
+      }
+    }
     setSaving(true)
     setSaveError(null)
     try {
-      const saved = await saveMock({ id: currentId, method, path: path.trim(), status, delayMs, body, randomize, headers })
+      const saved = await saveMock({ id: currentId, method, path: path.trim(), status, delayMs, body, randomize, headers, rules })
       setCurrentId(saved.id)
       // Adopt the server's stored state so "once" fields show their baked-in values (they're
       // generated at save and no longer live in the randomize config).
@@ -85,6 +99,7 @@ export default function Editor({
       setBody(saved.body)
       setRandomize(saved.randomize)
       setHeaders(saved.headers)
+      setRules(saved.rules)
       setBaseline({
         method: saved.method,
         path: saved.path,
@@ -93,6 +108,7 @@ export default function Editor({
         body: saved.body,
         randomize: saved.randomize,
         headers: saved.headers,
+        rules: saved.rules ?? [],
       })
       onReload()
       return true
@@ -287,6 +303,7 @@ export default function Editor({
               />
             )}
             {tab === 'headers' && <HeadersTab headers={headers} setHeaders={setHeaders} />}
+            {tab === 'rules' && <RulesTab rules={rules} setRules={setRules} />}
             {tab === 'test' && (
               <TestTab isNew={currentId === null} method={method} path={path} onRun={runTest} />
             )}
